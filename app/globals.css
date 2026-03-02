@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --font-sans: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+  --font-display: "Palatino", "Book Antiqua", "Georgia", serif;
+  --bg-0: #f8fbf6;
+  --bg-1: #e8f4df;
+  --ink-strong: #152014;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% 14%, rgba(94, 162, 76, 0.2) 0%, rgba(94, 162, 76, 0) 38%),
+    radial-gradient(circle at 86% 8%, rgba(113, 180, 88, 0.2) 0%, rgba(113, 180, 88, 0) 33%),
+    linear-gradient(170deg, var(--bg-0) 0%, var(--bg-1) 100%);
+  color: var(--ink-strong);
+  font-family: var(--font-sans);
+  background-attachment: fixed;
+}
+
+a {
+  @apply text-brand-700 hover:text-brand-800;
+}
+
+.card {
+  @apply rounded-2xl border border-brand-200/80 bg-white/90 p-5 shadow-lg shadow-brand-900/5 backdrop-blur;
+}
+
+.field {
+  @apply mt-1 w-full rounded-xl border border-brand-200 bg-white/95 px-3 py-2 text-sm text-slate-900 outline-none ring-brand-300 transition focus:border-brand-400 focus:ring-2;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand-800;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-xl border border-brand-300 bg-white/90 px-4 py-2 text-sm font-semibold text-brand-900 transition hover:-translate-y-px hover:bg-brand-100;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:-translate-y-px hover:bg-red-100;
+}
+
+.alert-success {
+  @apply rounded-xl border border-green-200 bg-green-50/90 p-3 text-sm text-green-800;
+}
+
+.alert-error {
+  @apply rounded-xl border border-red-200 bg-red-50/90 p-3 text-sm text-red-800;
+}
+
+.section-head {
+  @apply rounded-2xl border border-brand-200/60 bg-white/75 p-5 shadow-md shadow-brand-900/5 backdrop-blur;
+}
+
+.card-hero {
+  @apply rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-100/80 via-white/90 to-brand-50 p-5 shadow-md shadow-brand-900/5;
+}
+
+.meta-label {
+  @apply text-[0.7rem] uppercase tracking-[0.16em] text-brand-800;
+}
+
+.metric-value {
+  @apply mt-1 text-2xl font-semibold text-brand-900;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
