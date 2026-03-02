@@ -1,39 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type ReportRow = {
-  id: string;
-  periodType: "daily" | "weekly";
-  periodStart: string;
-  periodEnd: string;
-  summaryText: string;
-  patterns: string[];
-  actions: string[];
-  createdAt: string;
-};
-
-type GeneratedReport = {
-  id: string;
-  period: "daily" | "weekly";
-  summary: string;
-  patterns: string[];
-  actions: string[];
-  created_at: string;
-};
+import type { ReportSnapshotRecord } from "@/lib/local-types";
+import { generateReportLocal, listReports } from "@/lib/local-store";
 
 export default function InsightsPage() {
   const [period, setPeriod] = useState<"daily" | "weekly">("daily");
-  const [history, setHistory] = useState<ReportRow[]>([]);
-  const [latest, setLatest] = useState<GeneratedReport | null>(null);
+  const [history, setHistory] = useState<ReportSnapshotRecord[]>([]);
+  const [latest, setLatest] = useState<ReportSnapshotRecord | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function loadHistory() {
-    const response = await fetch("/api/reports", { cache: "no-store" });
-    const json = (await response.json()) as { data: ReportRow[] };
-    setHistory(json.data);
+    const rows = await listReports();
+    setHistory(rows);
   }
 
   useEffect(() => {
@@ -45,15 +26,9 @@ export default function InsightsPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/reports/generate?period=${period}`, {
-        method: "POST"
-      });
-      const json = (await response.json()) as GeneratedReport & { error?: string };
-      if (!response.ok) {
-        throw new Error(json.error ?? `Failed (${response.status})`);
-      }
-      setLatest(json);
-      setMessage(`${period[0].toUpperCase()}${period.slice(1)} report generated.`);
+      const report = await generateReportLocal(period);
+      setLatest(report);
+      setMessage(`${period[0].toUpperCase()}${period.slice(1)} report generated locally.`);
       await loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate report");
@@ -64,10 +39,10 @@ export default function InsightsPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-brand-900">Insights</h2>
+      <div className="section-head">
+        <h2 className="text-3xl font-semibold text-brand-900">Insights</h2>
         <p className="text-sm text-slate-700">
-          Rule-based analysis with aggressive coaching style and non-medical recommendations.
+          Rule-based analysis runs on this device and stores report history locally.
         </p>
       </div>
 
@@ -92,7 +67,7 @@ export default function InsightsPage() {
       {latest && (
         <article className="card space-y-3">
           <h3 className="text-lg font-semibold">Latest Report</h3>
-          <p className="text-sm">{latest.summary}</p>
+          <p className="text-sm">{latest.summaryText}</p>
           <div>
             <h4 className="text-sm font-semibold">Patterns</h4>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
@@ -114,6 +89,7 @@ export default function InsightsPage() {
 
       <section className="card">
         <h3 className="text-lg font-semibold">Report History</h3>
+        <p className="mt-1 text-xs text-slate-600">Stored only on this device.</p>
         {history.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600">No reports generated yet.</p>
         ) : (

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { getProfile, saveProfile } from "@/lib/local-store";
 
 type Profile = {
   id?: string;
@@ -29,21 +30,21 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     async function load() {
-      const response = await fetch("/api/profile", { cache: "no-store" });
-      const json = (await response.json()) as { data: any };
-      if (json.data) {
+      const data = await getProfile();
+      if (data) {
         setProfile({
-          name: json.data.name ?? "",
-          dob: json.data.dob ?? undefined,
-          sex: json.data.sex ?? undefined,
-          heightCm: json.data.heightCm ?? undefined,
-          baselineActivityLevel: json.data.baselineActivityLevel ?? undefined,
-          preferredUnits: json.data.preferredUnits ?? "metric",
-          currentWeightKg: json.data.currentWeightKg ?? undefined,
-          currentBodyFatPct: json.data.currentBodyFatPct ?? undefined,
-          waistCm: json.data.waistCm ?? undefined,
-          restingHr: json.data.restingHr ?? undefined,
-          goalPaceKgPerWeek: json.data.goalPaceKgPerWeek ?? undefined
+          id: data.id,
+          name: data.name,
+          dob: data.dob,
+          sex: data.sex,
+          heightCm: data.heightCm,
+          baselineActivityLevel: data.baselineActivityLevel,
+          preferredUnits: data.preferredUnits,
+          currentWeightKg: data.currentWeightKg,
+          currentBodyFatPct: data.currentBodyFatPct,
+          waistCm: data.waistCm,
+          restingHr: data.restingHr,
+          goalPaceKgPerWeek: data.goalPaceKgPerWeek
         });
       }
     }
@@ -55,28 +56,21 @@ export default function OnboardingPage() {
     setMessage(null);
     setError(null);
     try {
-      const response = await fetch("/api/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: profile.name,
-          dob: profile.dob,
-          sex: profile.sex,
-          height_cm: profile.heightCm,
-          baseline_activity_level: profile.baselineActivityLevel,
-          preferred_units: profile.preferredUnits,
-          current_weight_kg: profile.currentWeightKg,
-          current_body_fat_pct: profile.currentBodyFatPct,
-          waist_cm: profile.waistCm,
-          resting_hr: profile.restingHr,
-          goal_pace_kg_per_week: profile.goalPaceKgPerWeek
-        })
+      await saveProfile({
+        id: profile.id,
+        name: profile.name,
+        dob: profile.dob,
+        sex: profile.sex,
+        heightCm: profile.heightCm,
+        baselineActivityLevel: profile.baselineActivityLevel,
+        preferredUnits: profile.preferredUnits,
+        currentWeightKg: profile.currentWeightKg,
+        currentBodyFatPct: profile.currentBodyFatPct,
+        waistCm: profile.waistCm,
+        restingHr: profile.restingHr,
+        goalPaceKgPerWeek: profile.goalPaceKgPerWeek
       });
-      const json = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(json.error ?? `Failed (${response.status})`);
-      }
-      setMessage("Profile saved.");
+      setMessage("Profile saved locally on this device.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile");
     }
@@ -84,15 +78,15 @@ export default function OnboardingPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-brand-900">Profile Setup</h2>
+      <div className="section-head">
+        <h2 className="text-3xl font-semibold text-brand-900">Profile Setup</h2>
         <p className="text-sm text-slate-700">
-          Extended profile helps with calorie and burn estimations from free local formulas.
+          Extended profile helps with local calorie and burn estimations. Data stays on this device.
         </p>
       </div>
 
-      {message && <p className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">{message}</p>}
-      {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {message && <p className="alert-success">{message}</p>}
+      {error && <p className="alert-error">{error}</p>}
 
       <form className="card grid gap-3 md:grid-cols-2" onSubmit={submit}>
         <label className="text-sm">

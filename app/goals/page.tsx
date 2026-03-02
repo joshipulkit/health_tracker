@@ -1,20 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-
-type GoalRow = {
-  id: string;
-  startDate: string;
-  targetDate: string;
-  targetWeightKg: number;
-  targetBodyFatPct: number | null;
-  targetPaceKgPerWeek: number | null;
-  status: string;
-  createdAt: string;
-};
+import type { GoalRecord } from "@/lib/local-types";
+import { getGoals, saveGoal } from "@/lib/local-store";
 
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<GoalRow[]>([]);
+  const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,9 +18,8 @@ export default function GoalsPage() {
   const [pace, setPace] = useState<number | "">(0.5);
 
   async function loadGoals() {
-    const response = await fetch("/api/goals", { cache: "no-store" });
-    const json = (await response.json()) as { data: GoalRow[] };
-    setGoals(json.data);
+    const rows = await getGoals();
+    setGoals(rows);
   }
 
   useEffect(() => {
@@ -41,24 +31,14 @@ export default function GoalsPage() {
     setMessage(null);
     setError(null);
     try {
-      const response = await fetch("/api/goals", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          start_date: startDate,
-          target_date: targetDate,
-          target_weight_kg: targetWeight,
-          target_body_fat_pct: targetBodyFat === "" ? undefined : targetBodyFat,
-          target_pace_kg_per_week: pace === "" ? undefined : pace
-        })
+      await saveGoal({
+        startDate,
+        targetDate,
+        targetWeightKg: targetWeight,
+        targetBodyFatPct: targetBodyFat === "" ? undefined : targetBodyFat,
+        targetPaceKgPerWeek: pace === "" ? undefined : pace
       });
-      const json = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(json.error ?? `Failed (${response.status})`);
-      }
-      setMessage("Goal saved and set as active.");
+      setMessage("Goal saved locally for this device.");
       await loadGoals();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save goal");
@@ -67,13 +47,13 @@ export default function GoalsPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-brand-900">Goals</h2>
+      <div className="section-head">
+        <h2 className="text-3xl font-semibold text-brand-900">Goals</h2>
         <p className="text-sm text-slate-700">Set timeline-based targets for weight and body fat percentage.</p>
       </div>
 
-      {message && <p className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">{message}</p>}
-      {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {message && <p className="alert-success">{message}</p>}
+      {error && <p className="alert-error">{error}</p>}
 
       <form className="card grid gap-3 md:grid-cols-2" onSubmit={submit}>
         <label className="text-sm">
@@ -141,6 +121,7 @@ export default function GoalsPage() {
 
       <div className="card">
         <h3 className="text-lg font-semibold">Goal History</h3>
+        <p className="mt-1 text-xs text-slate-600">Stored only on this device.</p>
         {goals.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600">No goals saved yet.</p>
         ) : (

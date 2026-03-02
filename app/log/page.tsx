@@ -1,8 +1,24 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-
-type FoodSource = "manual" | "usda" | "openfoodfacts" | "mixed";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type {
+  BodyMetricRecord,
+  ExerciseLogRecord,
+  FoodLogRecord,
+  FoodSource,
+  SleepLogRecord
+} from "@/lib/local-types";
+import {
+  deleteBodyMetric,
+  deleteExerciseLog,
+  deleteFoodLog,
+  deleteSleepLog,
+  listLogsForDateWindow,
+  saveBodyMetric,
+  saveExerciseLog,
+  saveFoodLog,
+  saveSleepLog
+} from "@/lib/local-store";
 
 type NutritionCandidate = {
   source: "usda" | "openfoodfacts" | "manual";
@@ -13,54 +29,6 @@ type NutritionCandidate = {
   carbsPer100g: number;
   fatPer100g: number;
   fiberPer100g: number;
-};
-
-type FoodLogRow = {
-  id: string;
-  dateTime: string;
-  mealType: string;
-  itemName: string;
-  quantity: number;
-  unit: string;
-  grams: number | null;
-  caloriesKcal: number | null;
-  proteinG: number | null;
-  carbsG: number | null;
-  fatG: number | null;
-  fiberG: number | null;
-  source: FoodSource;
-  sourceRef: string | null;
-  createdAt: string;
-};
-
-type ExerciseLogRow = {
-  id: string;
-  dateTime: string;
-  activityName: string;
-  durationMin: number;
-  intensity: string;
-  metValue: number | null;
-  caloriesBurnedKcal: number | null;
-  createdAt: string;
-};
-
-type SleepLogRow = {
-  id: string;
-  date: string;
-  sleepHours: number;
-  sleepScore: number;
-  sleepQualityText: string;
-  createdAt: string;
-};
-
-type BodyLogRow = {
-  id: string;
-  date: string;
-  weightKg: number;
-  bodyFatPct: number;
-  waistCm: number | null;
-  restingHr: number | null;
-  createdAt: string;
 };
 
 const mealOptions = ["breakfast", "lunch", "dinner", "snack"] as const;
@@ -93,26 +61,6 @@ function isoToLocalDateTimeInput(iso: string): string {
   return localDateTimeInputFromDate(date);
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  let json: unknown = {};
-  try {
-    json = await response.json();
-  } catch {
-    json = {};
-  }
-
-  if (!response.ok) {
-    const message =
-      typeof json === "object" && json != null && "error" in json
-        ? String((json as { error?: string }).error ?? `Request failed (${response.status})`)
-        : `Request failed (${response.status})`;
-    throw new Error(message);
-  }
-
-  return json as T;
-}
-
 export default function LogPage() {
   const now = new Date();
 
@@ -124,10 +72,10 @@ export default function LogPage() {
   const [activeFeedTab, setActiveFeedTab] = useState<FeedTab>("all");
 
   const [logsLoading, setLogsLoading] = useState(false);
-  const [foodLogs, setFoodLogs] = useState<FoodLogRow[]>([]);
-  const [exerciseLogs, setExerciseLogs] = useState<ExerciseLogRow[]>([]);
-  const [sleepLogs, setSleepLogs] = useState<SleepLogRow[]>([]);
-  const [bodyLogs, setBodyLogs] = useState<BodyLogRow[]>([]);
+  const [foodLogs, setFoodLogs] = useState<FoodLogRecord[]>([]);
+  const [exerciseLogs, setExerciseLogs] = useState<ExerciseLogRecord[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<SleepLogRecord[]>([]);
+  const [bodyLogs, setBodyLogs] = useState<BodyMetricRecord[]>([]);
 
   const [nutritionQuery, setNutritionQuery] = useState("");
   const [nutritionOptions, setNutritionOptions] = useState<NutritionCandidate[]>([]);
@@ -204,51 +152,25 @@ export default function LogPage() {
     };
   }, [foodLogs, exerciseLogs, bodyLogs]);
 
-  const loadLogs = useCallback(async () => {
+  async function loadLogs() {
     setLogsLoading(true);
     setError(null);
-
     try {
-      const selectedEndLocal = new Date(`${selectedDate}T23:59:59.999`);
-      const selectedStartLocal = new Date(`${selectedDate}T00:00:00.000`);
-      if (windowMode === "week") {
-        selectedStartLocal.setDate(selectedStartLocal.getDate() - 6);
-      }
-
-      const startIso = selectedStartLocal.toISOString();
-      const endIso = selectedEndLocal.toISOString();
-      const startDate = localDateInputFromDate(selectedStartLocal);
-      const endDate = localDateInputFromDate(selectedEndLocal);
-
-      const [foodResp, exerciseResp, sleepResp, bodyResp] = await Promise.all([
-        requestJson<{ data: FoodLogRow[] }>(
-          `/api/logs/food?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}&limit=300`
-        ),
-        requestJson<{ data: ExerciseLogRow[] }>(
-          `/api/logs/exercise?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}&limit=300`
-        ),
-        requestJson<{ data: SleepLogRow[] }>(
-          `/api/logs/sleep?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}&limit=300`
-        ),
-        requestJson<{ data: BodyLogRow[] }>(
-          `/api/logs/body?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}&limit=300`
-        )
-      ]);
-
-      setFoodLogs(foodResp.data);
-      setExerciseLogs(exerciseResp.data);
-      setSleepLogs(sleepResp.data);
-      setBodyLogs(bodyResp.data);
+      const data = await listLogsForDateWindow(selectedDate, windowMode);
+      setFoodLogs(data.food);
+      setExerciseLogs(data.exercise);
+      setSleepLogs(data.sleep);
+      setBodyLogs(data.body);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load logs");
     } finally {
       setLogsLoading(false);
     }
-  }, [selectedDate, windowMode]);
+  }
 
   useEffect(() => {
     void loadLogs();
-  }, [loadLogs]);
+  }, [selectedDate, windowMode]);
 
   function resetFoodForm() {
     setFoodEditId(null);
@@ -302,25 +224,21 @@ export default function LogPage() {
     setError(null);
 
     try {
-      await requestJson<{ id: string }>("/api/logs/food", {
-        method: foodEditId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: foodEditId ?? undefined,
-          date_time: localDateTimeToIso(foodDateTime),
-          meal_type: mealType,
-          item_name: itemName,
-          quantity,
-          unit,
-          grams: grams || undefined,
-          calories_kcal: calories === "" ? foodPreview?.calories : calories,
-          protein_g: protein === "" ? foodPreview?.protein : protein,
-          carbs_g: carbs === "" ? foodPreview?.carbs : carbs,
-          fat_g: fat === "" ? foodPreview?.fat : fat,
-          fiber_g: fiber === "" ? foodPreview?.fiber : fiber,
-          source: foodSource,
-          source_ref: foodSourceRef
-        })
+      await saveFoodLog({
+        id: foodEditId ?? undefined,
+        dateTime: localDateTimeToIso(foodDateTime),
+        mealType,
+        itemName,
+        quantity,
+        unit,
+        grams: grams || undefined,
+        caloriesKcal: calories === "" ? foodPreview?.calories : calories,
+        proteinG: protein === "" ? foodPreview?.protein : protein,
+        carbsG: carbs === "" ? foodPreview?.carbs : carbs,
+        fatG: fat === "" ? foodPreview?.fat : fat,
+        fiberG: fiber === "" ? foodPreview?.fiber : fiber,
+        source: foodSource,
+        sourceRef: foodSourceRef
       });
 
       setMessage(foodEditId ? "Food entry updated." : "Food entry saved.");
@@ -345,10 +263,12 @@ export default function LogPage() {
     setMessage(null);
 
     try {
-      const response = await requestJson<{ data: NutritionCandidate[] }>(
-        `/api/nutrition/search?query=${encodeURIComponent(nutritionQuery)}`
-      );
-      setNutritionOptions(response.data);
+      const response = await fetch(`/api/nutrition/search?query=${encodeURIComponent(nutritionQuery)}`);
+      const json = (await response.json()) as { data: NutritionCandidate[]; error?: string };
+      if (!response.ok) {
+        throw new Error(json.error ?? `Search failed (${response.status})`);
+      }
+      setNutritionOptions(json.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Nutrition search failed");
     }
@@ -360,19 +280,14 @@ export default function LogPage() {
     setError(null);
 
     try {
-      await requestJson<{ id: string }>("/api/logs/exercise", {
-        method: exerciseEditId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: exerciseEditId ?? undefined,
-          date_time: localDateTimeToIso(exerciseDateTime),
-          activity_name: activityName,
-          duration_min: duration,
-          intensity,
-          calories_burned_kcal: exerciseCalories === "" ? undefined : exerciseCalories
-        })
+      await saveExerciseLog({
+        id: exerciseEditId ?? undefined,
+        dateTime: localDateTimeToIso(exerciseDateTime),
+        activityName,
+        durationMin: duration,
+        intensity,
+        caloriesBurnedKcal: exerciseCalories === "" ? undefined : exerciseCalories
       });
-
       setMessage(exerciseEditId ? "Exercise entry updated." : "Exercise entry saved.");
       if (exerciseEditId) {
         resetExerciseForm();
@@ -389,18 +304,13 @@ export default function LogPage() {
     setError(null);
 
     try {
-      await requestJson<{ id: string }>("/api/logs/sleep", {
-        method: sleepEditId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: sleepEditId ?? undefined,
-          date: sleepDate,
-          sleep_hours: sleepHours,
-          sleep_score_1_10: sleepScore,
-          sleep_quality_text: sleepText
-        })
+      await saveSleepLog({
+        id: sleepEditId ?? undefined,
+        date: sleepDate,
+        sleepHours,
+        sleepScore,
+        sleepQualityText: sleepText
       });
-
       setMessage(sleepEditId ? "Sleep entry updated." : "Sleep entry saved.");
       if (sleepEditId) {
         resetSleepForm();
@@ -417,19 +327,14 @@ export default function LogPage() {
     setError(null);
 
     try {
-      await requestJson<{ id: string }>("/api/logs/body", {
-        method: bodyEditId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: bodyEditId ?? undefined,
-          date: bodyDate,
-          weight_kg: weight,
-          body_fat_pct: bodyFat,
-          waist_cm: waist === "" ? undefined : waist,
-          resting_hr: restingHr === "" ? undefined : restingHr
-        })
+      await saveBodyMetric({
+        id: bodyEditId ?? undefined,
+        date: bodyDate,
+        weightKg: weight,
+        bodyFatPct: bodyFat,
+        waistCm: waist === "" ? undefined : waist,
+        restingHr: restingHr === "" ? undefined : restingHr
       });
-
       setMessage(bodyEditId ? "Body entry updated." : "Body entry saved.");
       if (bodyEditId) {
         resetBodyForm();
@@ -442,19 +347,16 @@ export default function LogPage() {
 
   async function removeEntry(type: "food" | "exercise" | "sleep" | "body", id: string) {
     const ok = window.confirm("Delete this entry? This action cannot be undone.");
-    if (!ok) {
-      return;
-    }
+    if (!ok) return;
 
     setMessage(null);
     setError(null);
 
     try {
-      await requestJson<{ deleted: boolean }>(`/api/logs/${type}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-      });
+      if (type === "food") await deleteFoodLog(id);
+      if (type === "exercise") await deleteExerciseLog(id);
+      if (type === "sleep") await deleteSleepLog(id);
+      if (type === "body") await deleteBodyMetric(id);
       setMessage("Entry deleted.");
       await loadLogs();
     } catch (err) {
@@ -462,10 +364,10 @@ export default function LogPage() {
     }
   }
 
-  function beginFoodEdit(row: FoodLogRow) {
+  function beginFoodEdit(row: FoodLogRecord) {
     setFoodEditId(row.id);
     setFoodDateTime(isoToLocalDateTimeInput(row.dateTime));
-    setMealType((mealOptions.includes(row.mealType as MealType) ? row.mealType : "lunch") as MealType);
+    setMealType(row.mealType);
     setItemName(row.itemName);
     setQuantity(row.quantity);
     setUnit(row.unit);
@@ -481,19 +383,17 @@ export default function LogPage() {
     setMessage("Food entry loaded in form for editing.");
   }
 
-  function beginExerciseEdit(row: ExerciseLogRow) {
+  function beginExerciseEdit(row: ExerciseLogRecord) {
     setExerciseEditId(row.id);
     setExerciseDateTime(isoToLocalDateTimeInput(row.dateTime));
     setActivityName(row.activityName);
     setDuration(row.durationMin);
-    setIntensity(
-      (intensityOptions.includes(row.intensity as Intensity) ? row.intensity : "moderate") as Intensity
-    );
+    setIntensity(row.intensity);
     setExerciseCalories(row.caloriesBurnedKcal ?? "");
     setMessage("Exercise entry loaded in form for editing.");
   }
 
-  function beginSleepEdit(row: SleepLogRow) {
+  function beginSleepEdit(row: SleepLogRecord) {
     setSleepEditId(row.id);
     setSleepDate(row.date);
     setSleepHours(row.sleepHours);
@@ -502,7 +402,7 @@ export default function LogPage() {
     setMessage("Sleep entry loaded in form for editing.");
   }
 
-  function beginBodyEdit(row: BodyLogRow) {
+  function beginBodyEdit(row: BodyMetricRecord) {
     setBodyEditId(row.id);
     setBodyDate(row.date);
     setWeight(row.weightKg);
@@ -577,11 +477,7 @@ export default function LogPage() {
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
               Meal Type
-              <select
-                className="field"
-                value={mealType}
-                onChange={(event) => setMealType(event.target.value as MealType)}
-              >
+              <select className="field" value={mealType} onChange={(event) => setMealType(event.target.value as MealType)}>
                 {mealOptions.map((option) => (
                   <option key={option}>{option}</option>
                 ))}
@@ -614,12 +510,7 @@ export default function LogPage() {
             </label>
             <label className="block text-sm">
               Unit
-              <input
-                className="field"
-                value={unit}
-                onChange={(event) => setUnit(event.target.value)}
-                required
-              />
+              <input className="field" value={unit} onChange={(event) => setUnit(event.target.value)} required />
             </label>
             <label className="block text-sm">
               Grams
@@ -646,7 +537,7 @@ export default function LogPage() {
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={searchNutrition}
+                onClick={() => void searchNutrition()}
                 disabled={nutritionQuery.trim().length < 2}
               >
                 Search

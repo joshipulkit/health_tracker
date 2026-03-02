@@ -1,6 +1,19 @@
 "use client";
 
 import { ChangeEvent, useState } from "react";
+import { exportLocalData, exportLocalDataCsv, importLocalData } from "@/lib/local-store";
+
+function downloadTextFile(filename: string, text: string, mimeType: string) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 export default function SettingsPage() {
   const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
@@ -15,20 +28,23 @@ export default function SettingsPage() {
     setMessage(null);
     setError(null);
     try {
-      const response = await fetch("/api/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          format: exportFormat,
-          range_start: rangeStart || undefined,
-          range_end: rangeEnd || undefined
-        })
-      });
-      const json = (await response.json()) as { error?: string; file_path?: string };
-      if (!response.ok) {
-        throw new Error(json.error ?? `Export failed (${response.status})`);
+      const nowLabel = new Date().toISOString().replaceAll(":", "-").slice(0, 19);
+      if (exportFormat === "json") {
+        const payload = await exportLocalData({
+          rangeStart: rangeStart || undefined,
+          rangeEnd: rangeEnd || undefined
+        });
+        const text = JSON.stringify(payload, null, 2);
+        downloadTextFile(`health-tracker-export-${nowLabel}.json`, text, "application/json");
+        setMessage("JSON export downloaded from local device data.");
+      } else {
+        const csv = await exportLocalDataCsv({
+          rangeStart: rangeStart || undefined,
+          rangeEnd: rangeEnd || undefined
+        });
+        downloadTextFile(`health-tracker-export-${nowLabel}.csv`, csv, "text/csv");
+        setMessage("CSV export downloaded from local device data.");
       }
-      setMessage(`Export saved at ${json.file_path}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     }
@@ -41,21 +57,9 @@ export default function SettingsPage() {
       if (!importText.trim()) {
         throw new Error("Paste a valid export JSON payload first.");
       }
-
-      const parsed = JSON.parse(importText) as Record<string, unknown>;
-      const response = await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: importMode,
-          payload: parsed
-        })
-      });
-      const json = (await response.json()) as { error?: string; inserted?: Record<string, number> };
-      if (!response.ok) {
-        throw new Error(json.error ?? `Import failed (${response.status})`);
-      }
-      setMessage(`Import complete. Inserted rows: ${JSON.stringify(json.inserted)}`);
+      const parsed = JSON.parse(importText) as unknown;
+      const inserted = await importLocalData(parsed, importMode);
+      setMessage(`Import complete. Inserted rows: ${JSON.stringify(inserted)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
     }
@@ -73,13 +77,21 @@ export default function SettingsPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-brand-900">Settings</h2>
+      <div className="section-head">
+        <h2 className="text-3xl font-semibold text-brand-900">Settings</h2>
         <p className="text-sm text-slate-700">Data portability, deployment modes, and free API configuration.</p>
       </div>
 
-      {message && <p className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">{message}</p>}
-      {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {message && <p className="alert-success">{message}</p>}
+      {error && <p className="alert-error">{error}</p>}
+
+      <div className="card space-y-3">
+        <h3 className="text-lg font-semibold">Local-First Data Mode</h3>
+        <p className="text-sm text-slate-700">
+          All health data is saved in your browser's IndexedDB on this device only. Different devices keep separate
+          copies unless you export/import manually.
+        </p>
+      </div>
 
       <div className="card space-y-3">
         <h3 className="text-lg font-semibold">Run Locally (Laptop + iPhone)</h3>
@@ -87,28 +99,27 @@ export default function SettingsPage() {
           <li>Start the app with `npm run dev:lan`.</li>
           <li>Find your laptop IP, e.g. `192.168.x.x`.</li>
           <li>Open `http://YOUR_IP:3000` on your iPhone on the same Wi-Fi.</li>
-          <li>Use “Add to Home Screen” in Safari to install as PWA.</li>
+          <li>Use Add to Home Screen in Safari to install as PWA.</li>
         </ol>
       </div>
 
       <div className="card space-y-3">
         <h3 className="text-lg font-semibold">Run on Vercel (Internet Access)</h3>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">
-          <li>Push this repo to GitHub.</li>
-          <li>Import the repo in Vercel and deploy.</li>
-          <li>Add environment variables in Vercel: `USDA_API_KEY` (optional), `DB_FILE_PATH` (optional).</li>
-          <li>After deploy, open your Vercel domain from any device.</li>
+          <li>Connect your GitHub repo in Vercel and deploy as Next.js.</li>
+          <li>Add `USDA_API_KEY` in Vercel environment variables for nutrition lookup.</li>
+          <li>Open your Vercel URL from any device.</li>
         </ol>
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          Current storage is SQLite. On Vercel serverless runtime, file storage is temporary (`/tmp`), so logs can
-          reset. Use regular exports as backup.
+        <p className="rounded-lg border border-brand-200 bg-brand-50 p-3 text-xs text-slate-700">
+          In local-first mode, each browser/device stores its own dataset. Use export/import to sync data manually
+          between devices.
         </p>
       </div>
 
       <div className="card space-y-3">
         <h3 className="text-lg font-semibold">Nutrition API (Free)</h3>
         <p className="text-sm text-slate-700">
-          To enable USDA lookup, add `USDA_API_KEY` in `.env.local`. OpenFoodFacts fallback works without key.
+          USDA lookup uses your server-side `USDA_API_KEY`. OpenFoodFacts fallback works without key.
         </p>
       </div>
 
@@ -146,7 +157,7 @@ export default function SettingsPage() {
           </label>
         </div>
         <button className="btn" onClick={handleExport}>
-          Create Export
+          Download Export
         </button>
       </div>
 

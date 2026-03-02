@@ -11,57 +11,35 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-
-type DashboardResponse = {
-  range: "7d" | "30d" | "90d";
-  series: Array<{
-    date: string;
-    calories_in: number;
-    calories_out: number;
-    protein_g: number;
-    sleep_score: number | null;
-    sleep_hours: number | null;
-    weight_kg: number | null;
-    body_fat_pct: number | null;
-    exercise_sessions: number;
-  }>;
-  adherence: {
-    workout_days: number;
-    logged_days: number;
-    protein_target_hit_days: number;
-  };
-  goal_status: {
-    status: "on_track" | "at_risk" | "off_track" | "no_goal";
-    details: string;
-  };
-};
+import {
+  averageSleepScore,
+  getDashboardLocal,
+  type LocalDashboardPayload
+} from "@/lib/local-store";
 
 const ranges: Array<"7d" | "30d" | "90d"> = ["7d", "30d", "90d"];
 
 export default function DashboardPage() {
   const [range, setRange] = useState<"7d" | "30d" | "90d">("30d");
-  const [data, setData] = useState<DashboardResponse | null>(null);
+  const [data, setData] = useState<LocalDashboardPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/dashboard?range=${range}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`Failed to load dashboard (${response.status})`);
-        }
-        const json = (await response.json()) as DashboardResponse;
-        setData(json);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setLoading(false);
-      }
+  async function loadDashboard(selectedRange: "7d" | "30d" | "90d") {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await getDashboardLocal(selectedRange);
+      setData(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
     }
-    void load();
+  }
+
+  useEffect(() => {
+    void loadDashboard(range);
   }, [range]);
 
   const totals = useMemo(() => {
@@ -72,16 +50,11 @@ export default function DashboardPage() {
         avgSleep: 0
       };
     }
-    const caloriesIn = data.series.reduce((sum, point) => sum + point.calories_in, 0);
-    const caloriesOut = data.series.reduce((sum, point) => sum + point.calories_out, 0);
-    const sleepValues = data.series
-      .map((point) => point.sleep_score)
-      .filter((value): value is number => value != null);
-    const avgSleep =
-      sleepValues.length > 0
-        ? sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length
-        : 0;
-    return { caloriesIn, caloriesOut, avgSleep };
+    return {
+      caloriesIn: data.series.reduce((sum, point) => sum + point.calories_in, 0),
+      caloriesOut: data.series.reduce((sum, point) => sum + point.calories_out, 0),
+      avgSleep: averageSleepScore(data.series)
+    };
   }, [data]);
 
   return (
@@ -91,7 +64,7 @@ export default function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.16em] text-brand-700">Overview</p>
           <h2 className="text-3xl font-semibold text-brand-900">Dashboard</h2>
           <p className="text-sm text-slate-700">
-            Track weight, body fat, intake, burn, sleep, and consistency.
+            Data shown here is loaded from local storage on this device.
           </p>
         </div>
         <div className="flex gap-2">
@@ -104,11 +77,14 @@ export default function DashboardPage() {
               {value}
             </button>
           ))}
+          <button className="btn-secondary" onClick={() => void loadDashboard(range)}>
+            Refresh
+          </button>
         </div>
       </div>
 
-      {loading && <p className="text-sm">Loading dashboard…</p>}
-      {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {loading && <p className="text-sm">Loading dashboard...</p>}
+      {error && <p className="alert-error">{error}</p>}
 
       {data && (
         <>
@@ -127,7 +103,9 @@ export default function DashboardPage() {
             </div>
             <div className="card-hero">
               <p className="text-xs uppercase tracking-wide text-slate-500">Goal Status</p>
-              <p className="mt-1 text-lg font-semibold capitalize">{data.goal_status.status.replace("_", " ")}</p>
+              <p className="mt-1 text-lg font-semibold capitalize">
+                {data.goal_status.status.replace("_", " ")}
+              </p>
               <p className="text-xs text-slate-600">{data.goal_status.details}</p>
             </div>
           </div>
